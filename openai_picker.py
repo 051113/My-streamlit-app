@@ -1,9 +1,7 @@
 import json
-
 from openai import OpenAI
 
 import recommender
-
 
 MODEL_NAME = "gpt-4.1-mini"
 
@@ -23,7 +21,8 @@ def pick_movies(candidates, user_state, openai_api_key, feedback):
         picks = [movie for movie in candidates if movie["id"] in selected_ids]
         picks.sort(key=lambda movie: selected_ids.index(movie["id"]))
         return picks, reasons, selected_ids[0]
-    except (ValueError, RuntimeError, json.JSONDecodeError):
+    except Exception:
+        # broad fallback to guarantee we always return a 3-tuple
         picks = recommender.pick_top_three(candidates, user_state, feedback)
         reasons = recommender.template_reasons(picks, user_state)
         return picks, reasons, picks[0]["id"]
@@ -63,7 +62,6 @@ def _call_openai(candidates, user_state, openai_api_key):
         ],
     }
 
-    # ✅ Responses API JSON mode is configured via text.format (NOT response_format)
     response = client.responses.create(
         model=MODEL_NAME,
         input=[
@@ -94,5 +92,19 @@ def _validate_response(raw_text, candidates):
     if not all(mid in candidate_ids for mid in selected_ids):
         raise ValueError("Unknown movie id")
 
-    # Normalize reasons keys to strings for lookup, then return
+    # Validate and normalize reasons
+    if not isinstance(reasons_obj, dict):
+        raise ValueError("reasons must be an object/dict")
 
+    normalized = {}
+    for mid in selected_ids:
+        # reasons may come back with string keys
+        reason = reasons_obj.get(str(mid)) or reasons_obj.get(mid)
+        if not reason or not isinstance(reason, str):
+            raise ValueError("Reason missing")
+        reason = reason.strip()
+        if len(reason) > 140:
+            raise ValueError("Reason too long")
+        normalized[mid] = reason
+
+    return selected_ids, normalized
