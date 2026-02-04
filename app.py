@@ -1,12 +1,10 @@
 import datetime
-
 import streamlit as st
 
 import openai_picker
 import recommender
 import storage
 import tmdb_client
-
 
 st.set_page_config(page_title="3 Picks Tonight", page_icon="🎬", layout="centered")
 
@@ -26,51 +24,102 @@ if not OPENAI_API_KEY:
     st.warning("OpenAI key not found. Using heuristic picks instead of AI reasons.")
 
 today_key = datetime.date.today().isoformat()
-st.session_state.setdefault("refresh_count", {})
-st.session_state.setdefault("seen_tmdb_ids", set())
-st.session_state.setdefault("current_picks", [])
-st.session_state.setdefault("current_reasons", {})
-st.session_state.setdefault("highlight_id", None)
-st.session_state.setdefault("picked_id", None)
-st.session_state.setdefault("mood_text", "")
-st.session_state.setdefault("candidate_count", 0)
+
+# --- Session state defaults ---
+st.session_state.setdefault("refresh_count", {})           # {date: int}
+st.session_state.setdefault("seen_tmdb_ids", set())        # set[int]
+st.session_state.setdefault("current_picks", [])           # list[dict]
+st.session_state.setdefault("current_reasons", {})         # {id: str}
+st.session_state.setdefault("highlight_id", None)          # int|None
+st.session_state.setdefault("picked_id", None)             # int|None
+st.session_state.setdefault("mood_text", "")               # str
+st.session_state.setdefault("candidate_count", 0)          # int
+
+# Persist input values in session_state so they are always available on reruns
+st.session_state.setdefault("time_available", 120)
+st.session_state.setdefault("energy", "Okay")
+st.session_state.setdefault("language", "en-US")
+st.session_state.setdefault("tighten_runtime", False)
 
 
-def set_mood_text(text):
-    st.session_state.mood_text = text
+def set_mood_text(label: str):
+    # Convert chip label into a short natural mood sentence (better than just "Comfort")
+    mapping = {
+        "Comfort": "Something cozy and uplifting.",
+        "Laugh": "Something funny and easy.",
+        "Thrill": "Something exciting and tense.",
+        "Cry": "Something emotional and heartfelt.",
+        "Weird": "Something weird but good.",
+    }
+    st.session_state.mood_text = mapping.get(label, label)
 
 
+# -----------------------------
+# Mood chips (OUTSIDE the form)
+# -----------------------------
+mood_cols = st.columns(5)
+mood_cols[0].button("Comfort", on_click=set_mood_text, args=("Comfort",))
+mood_cols[1].button("Laugh", on_click=set_mood_text, args=("Laugh",))
+mood_cols[2].button("Thrill", on_click=set_mood_text, args=("Thrill",))
+mood_cols[3].button("Cry", on_click=set_mood_text, args=("Cry",))
+mood_cols[4].button("Weird", on_click=set_mood_text, args=("Weird",))
+
+# -----------------------------
+# Inputs form (no callbacks inside)
+# -----------------------------
 with st.form("inputs"):
     st.text_input(
         "In one sentence, what do you want tonight?",
         key="mood_text",
         placeholder="Something cozy and uplifting.",
     )
-    time_available = st.slider("Time available (minutes)", 60, 240, 120, 5)
-    energy = st.radio("Energy", ["Dead", "Okay", "Ready"], horizontal=True)
-    language = st.radio("Language", ["en-US", "ko-KR"], horizontal=True)
-    tighten_runtime = st.toggle("Tighten to shorter runtime", value=False)
 
-    mood_cols = st.columns(5)
-    mood_cols[0].button("Comfort", on_click=set_mood_text, args=("Comfort",))
-    mood_cols[1].button("Laugh", on_click=set_mood_text, args=("Laugh",))
-    mood_cols[2].button("Thrill", on_click=set_mood_text, args=("Thrill",))
-    mood_cols[3].button("Cry", on_click=set_mood_text, args=("Cry",))
-    mood_cols[4].button("Weird", on_click=set_mood_text, args=("Weird",))
+    st.slider(
+        "Time available (minutes)",
+        60, 240, step=5,
+        key="time_available",
+    )
+
+    st.radio(
+        "Energy",
+        ["Dead", "Okay", "Ready"],
+        horizontal=True,
+        key="energy",
+    )
+
+    st.radio(
+        "Language",
+        ["en-US", "ko-KR"],
+        horizontal=True,
+        key="language",
+    )
+
+    st.toggle(
+        "Tighten to shorter runtime",
+        value=False,
+        key="tighten_runtime",
+    )
 
     submitted = st.form_submit_button("Get 3 picks")
 
 
-def compute_picks(force_refresh=False):
+def compute_picks(force_refresh: bool = False) -> None:
     refresh_count = st.session_state.refresh_count.get(today_key, 0)
     if force_refresh and refresh_count >= 3:
         st.info("Daily refresh limit reached. Try again tomorrow.")
         return
 
+    # Read inputs from session_state (always available)
+    mood_text = st.session_state.mood_text
+    time_available = st.session_state.time_available
+    energy = st.session_state.energy
+    language = st.session_state.language
+    tighten_runtime = st.session_state.tighten_runtime
+
     try:
         genre_map = tmdb_client.get_genre_map(TMDB_API_KEY, language)
         params = recommender.build_discover_params(
-            mood_text=st.session_state.mood_text,
+            mood_text=mood_text,
             energy=energy,
             time_available=time_available,
             tighten_runtime=tighten_runtime,
@@ -80,25 +129,25 @@ def compute_picks(force_refresh=False):
     except RuntimeError:
         st.error("Could not reach TMDB. Please try again.")
         return
+
     candidates = []
     for movie in discover_pool:
         if movie["id"] in st.session_state.seen_tmdb_ids:
             continue
         try:
-            details = tmdb_client.get_movie_details(
-                TMDB_API_KEY, movie["id"], language
-            )
+            details = tmdb_client.get_movie_details(TMDB_API_KEY, movie["id"], language)
         except RuntimeError:
             continue
         if not details:
             continue
+
         candidates.append(details)
         if len(candidates) >= 60:
             break
 
     feedback = storage.read_feedback()
     user_state = {
-        "mood_text": st.session_state.mood_text,
+        "mood_text": mood_text,
         "time_available": time_available,
         "energy": energy,
         "language": language,
@@ -120,7 +169,7 @@ def compute_picks(force_refresh=False):
     st.session_state.current_reasons = reasons
     st.session_state.highlight_id = highlight_id
     st.session_state.picked_id = None
-    st.session_state.seen_tmdb_ids.update([movie["id"] for movie in picks])
+    st.session_state.seen_tmdb_ids.update([m["id"] for m in picks])
 
     if force_refresh:
         st.session_state.refresh_count[today_key] = refresh_count + 1
@@ -159,28 +208,30 @@ if st.session_state.current_picks:
             recommended = movie["id"] == st.session_state.highlight_id
             class_name = "movie-card recommended" if recommended else "movie-card"
             st.markdown(f'<div class="{class_name}">', unsafe_allow_html=True)
+
             poster_url = tmdb_client.get_poster_url(movie.get("poster_path"))
             if poster_url:
-                st.image(poster_url, use_column_width=True)
+                st.image(poster_url, use_container_width=True)
             else:
                 st.image(
                     "https://via.placeholder.com/500x750?text=No+Poster",
-                    use_column_width=True,
+                    use_container_width=True,
                 )
 
             title = movie["title"]
-            year = movie.get("release_date", "")[:4]
+            year = (movie.get("release_date") or "")[:4]
             st.subheader(f"{title} ({year})")
+
             runtime = movie.get("runtime") or "—"
             st.caption(f"Runtime: {runtime} min")
+
             genres = ", ".join(movie.get("genres", [])) or "—"
             st.caption(f"Genres: {genres}")
+
             reason = st.session_state.current_reasons.get(movie["id"], "A solid pick.")
             st.write(reason)
 
-            trailer_url = tmdb_client.get_trailer_url(
-                TMDB_API_KEY, movie["id"], language
-            )
+            trailer_url = tmdb_client.get_trailer_url(TMDB_API_KEY, movie["id"], st.session_state.language)
             if trailer_url:
                 st.video(trailer_url)
             else:
@@ -191,6 +242,7 @@ if st.session_state.current_picks:
 
             st.markdown("</div>", unsafe_allow_html=True)
 
+    # --- After user picks one movie ---
     if st.session_state.picked_id:
         picked_movie = next(
             (m for m in st.session_state.current_picks if m["id"] == st.session_state.picked_id),
@@ -198,15 +250,20 @@ if st.session_state.current_picks:
         )
         if picked_movie:
             st.success("Ready? Press play.")
+
             feedback_choice = st.radio(
-                "Did this fit your mood tonight?", ["Yes", "No"], horizontal=True
+                "Did this fit your mood tonight?",
+                ["Yes", "No"],
+                horizontal=True,
+                key="feedback_choice",
             )
+
             if st.button("Save feedback"):
                 storage.save_feedback(
                     tmdb_id=picked_movie["id"],
                     mood_text=st.session_state.mood_text,
-                    time_available=time_available,
-                    energy=energy,
+                    time_available=st.session_state.time_available,
+                    energy=st.session_state.energy,
                     result=feedback_choice.lower(),
                     genre_ids=picked_movie.get("genre_ids", []),
                 )
@@ -217,8 +274,7 @@ with st.sidebar:
     with st.expander("Diagnostics"):
         st.write(f"TMDB key loaded: {bool(TMDB_API_KEY)}")
         st.write(f"OpenAI key loaded: {bool(OPENAI_API_KEY)}")
-        st.write(
-            f"Refresh count today: {st.session_state.refresh_count.get(today_key, 0)}"
-        )
+        st.write(f"Refresh count today: {st.session_state.refresh_count.get(today_key, 0)}")
         st.write(f"Candidates fetched: {st.session_state.candidate_count}")
         st.write(f"Seen ids count: {len(st.session_state.seen_tmdb_ids)}")
+
