@@ -30,6 +30,10 @@ def pick_movies(candidates, user_state, openai_api_key, feedback):
 
 def _call_openai(candidates, user_state, openai_api_key):
     client = OpenAI(api_key=openai_api_key)
+    system_message = (
+        "You are a movie curator. Select exactly 3 movies from the provided "
+        "candidate list. Never invent titles or IDs. Respond ONLY with JSON."
+    )
 
     system_message = (
         "You are a movie curator who minimizes decision fatigue.\n"
@@ -50,6 +54,10 @@ def _call_openai(candidates, user_state, openai_api_key):
             {
                 "tmdb_id": movie["id"],
                 "title": movie["title"],
+                "year": movie.get("release_date", "")[:4],
+                "runtime": movie.get("runtime"),
+                "genres": movie.get("genres", []),
+                "overview": movie.get("overview", "")[:240],
                 "year": (movie.get("release_date") or "")[:4],
                 "runtime": movie.get("runtime"),
                 "genres": movie.get("genres", []),
@@ -61,6 +69,14 @@ def _call_openai(candidates, user_state, openai_api_key):
             for movie in candidates
         ],
     }
+    response = client.responses.create(
+        model=MODEL_NAME,
+        text={"format": {"type": "json_object"}},
+        input=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": json.dumps(user_message)},
+        ],
+    )
 
     response = client.responses.create(
         model=MODEL_NAME,
@@ -76,6 +92,19 @@ def _call_openai(candidates, user_state, openai_api_key):
 
 def _validate_response(raw_text, candidates):
     payload = json.loads(raw_text)
+    selected_ids = payload.get("selected_ids", [])
+    reasons = payload.get("reasons", {})
+    candidate_ids = {movie["id"] for movie in candidates}
+    if len(selected_ids) != 3 or len(set(selected_ids)) != 3:
+        raise ValueError("Invalid selection length")
+    if not all(movie_id in candidate_ids for movie_id in selected_ids):
+        raise ValueError("Unknown movie id")
+    for movie_id in selected_ids:
+        reason = reasons.get(str(movie_id)) or reasons.get(movie_id)
+        if not reason or len(reason) > 140:
+            raise ValueError("Reason missing or too long")
+        reasons[movie_id] = reason
+    return selected_ids, reasons
 
     selected_ids = payload.get("selected_ids", [])
     reasons_obj = payload.get("reasons", {})
