@@ -35,6 +35,11 @@ st.session_state.setdefault("picked_id", None)
 st.session_state.setdefault("mood_text", "")
 st.session_state.setdefault("candidate_count", 0)
 
+
+def set_mood_text(text):
+    st.session_state.mood_text = text
+
+
 with st.form("inputs"):
     st.text_input(
         "In one sentence, what do you want tonight?",
@@ -46,19 +51,14 @@ with st.form("inputs"):
     language = st.radio("Language", ["en-US", "ko-KR"], horizontal=True)
     tighten_runtime = st.toggle("Tighten to shorter runtime", value=False)
 
-    submitted = st.form_submit_button("Get 3 picks")
+    mood_cols = st.columns(5)
+    mood_cols[0].button("Comfort", on_click=set_mood_text, args=("Comfort",))
+    mood_cols[1].button("Laugh", on_click=set_mood_text, args=("Laugh",))
+    mood_cols[2].button("Thrill", on_click=set_mood_text, args=("Thrill",))
+    mood_cols[3].button("Cry", on_click=set_mood_text, args=("Cry",))
+    mood_cols[4].button("Weird", on_click=set_mood_text, args=("Weird",))
 
-mood_cols = st.columns(5)
-if mood_cols[0].button("Comfort"):
-    st.session_state.mood_text = "Comfort"
-if mood_cols[1].button("Laugh"):
-    st.session_state.mood_text = "Laugh"
-if mood_cols[2].button("Thrill"):
-    st.session_state.mood_text = "Thrill"
-if mood_cols[3].button("Cry"):
-    st.session_state.mood_text = "Cry"
-if mood_cols[4].button("Weird"):
-    st.session_state.mood_text = "Weird"
+    submitted = st.form_submit_button("Get 3 picks")
 
 
 def compute_picks(force_refresh=False):
