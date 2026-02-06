@@ -1,9 +1,4 @@
-diff --git a/openai_picker.py b/openai_picker.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..95146a6b1a3b45af0b800922824c5e010f0e6191
---- /dev/null
-+++ b/openai_picker.py
-@@ -0,0 +1,84 @@
+
 +import json
 +
 +from openai import OpenAI
