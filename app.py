@@ -1,8 +1,4 @@
-diff --git a/app.py b/app.py
-index adbfa7183630e3667d421c2f78752c00da0443bf..46c776a1ebb918dedc5c9da831a2264de6646ecf 100644
---- a/app.py
-+++ b/app.py
-@@ -1,24 +1,258 @@
+
 -import streamlit as st
 -import requests
 -
