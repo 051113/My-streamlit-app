@@ -1,3 +1,4 @@
+# this branch retains the code that main doesn't
 # 3 Picks Tonight
 
 Minimal-decision Streamlit app that shows exactly three movie options based on your mood, time, and energy.
