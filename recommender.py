@@ -10,11 +10,11 @@ MOOD_GENRES = {
 }
 
 KO_MOOD_KEYWORDS = {
-    "Comfort": ["comfort", "cozy", "healing", "warm", "soft"],
-    "Laugh": ["laugh", "comedy", "funny", "humor"],
-    "Thrill": ["thrill", "tense", "suspense", "action"],
-    "Cry": ["cry", "emotional", "sad", "drama"],
-    "Weird": ["weird", "strange", "offbeat", "odd"],
+    "Comfort": ["편안", "포근", "위로", "따뜻", "힐링"],
+    "Laugh": ["웃", "코미디", "유쾌", "재미"],
+    "Thrill": ["스릴", "긴장", "짜릿", "추격"],
+    "Cry": ["눈물", "감동", "드라마", "슬픔"],
+    "Weird": ["이상", "괴상", "독특", "기묘", "색다른"],
 }
 
 
@@ -50,7 +50,7 @@ def _detect_mood_key(mood_text):
             return mood
     for mood, keywords in KO_MOOD_KEYWORDS.items():
         for keyword in keywords:
-            if keyword in lowered:
+            if keyword in mood_text:
                 return mood
     return None
 
@@ -70,11 +70,7 @@ def pick_tiered_three(candidates, user_state, feedback):
         - _penalty_score(movie, penalties),
     )
     picks = [popular] if popular else []
-    available = (
-        [movie for movie in available if movie["id"] != popular["id"]]
-        if popular
-        else available
-    )
+    available = [movie for movie in available if movie["id"] != popular["id"]] if popular else available
 
     acclaimed = _pick_best(
         available,
@@ -114,9 +110,7 @@ def popular_score(movie):
     popularity = float(movie.get("popularity") or 0)
     votes = float(movie.get("vote_count") or 0)
     rating = float(movie.get("vote_average") or 0)
-    return 0.6 * math.log1p(popularity) + 0.25 * math.log1p(votes) + 0.15 * (
-        rating / 10
-    )
+    return 0.6 * math.log1p(popularity) + 0.25 * math.log1p(votes) + 0.15 * (rating / 10)
 
 
 def acclaimed_score(movie):
@@ -132,9 +126,7 @@ def wildcard_score(movie, mood_key):
     pop = float(movie.get("popularity") or 0)
     if mood_key != "Weird" and (votes < 120 or rating < 5.5):
         return -5.0
-    return 0.45 * (rating / 10) + 0.25 * math.log1p(votes) + 0.3 * (
-        1 / (1 + math.log1p(pop))
-    )
+    return 0.45 * (rating / 10) + 0.25 * math.log1p(votes) + 0.3 * (1 / (1 + math.log1p(pop)))
 
 
 def diversity_score(movie, picked):
@@ -176,13 +168,20 @@ def pick_top_three(candidates, user_state, feedback):
 
 
 def template_reasons(movies, user_state):
-    labels = ["Popular pick", "Critically acclaimed pick", "Wild card pick"]
+    language = user_state.get("ui_language") or user_state.get("language", "en-US")
+    if language == "ko-KR":
+        labels = ["인기 픽", "평단 호평 픽", "와일드카드 픽"]
+    else:
+        labels = ["Popular pick", "Critically acclaimed pick", "Wild card pick"]
     reasons = {}
     for idx, movie in enumerate(movies):
         label = labels[idx] if idx < len(labels) else "Tonight's pick"
         genre = movie.get("genres", ["good"])[0]
         runtime = movie.get("runtime") or user_state["time_available"]
-        reason = f"{label}: {genre} choice that fits tonight in about {runtime} min."
+        if language == "ko-KR":
+            reason = f"{label}: 오늘 기분에 맞는 {genre} 영화, 약 {runtime}분."
+        else:
+            reason = f"{label}: {genre} choice that fits tonight in about {runtime} min."
         reasons[movie["id"]] = reason[:140]
     return reasons
 
