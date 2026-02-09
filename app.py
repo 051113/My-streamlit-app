@@ -259,7 +259,6 @@ with st.sidebar:
         )
         st.write(f"Candidates fetched: {st.session_state.candidate_count}")
         st.write(f"Seen ids count: {len(st.session_state.seen_tmdb_ids)}")
->>>>>>> a37e234bf841df1549453d1f0d297390e41622e4
 
 import openai_picker
 import recommender
