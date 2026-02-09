@@ -10,9 +10,19 @@ import tmdb_client
 
 st.set_page_config(page_title="3 Movie Picks", layout="centered")
 
+_tmdb_secret = st.secrets.get("TMDB_API_KEY")
+_openai_secret = st.secrets.get("OPENAI_API_KEY")
 with st.sidebar:
-    TMDB_API_KEY = st.text_input("TMDB API Key", type="password")
-    OPENAI_API_KEY = st.text_input("OpenAI API Key (optional)", type="password")
+    TMDB_API_KEY = st.text_input(
+        "TMDB API Key",
+        type="password",
+        value=_tmdb_secret or "",
+    )
+    OPENAI_API_KEY = st.text_input(
+        "OpenAI API Key (optional)",
+        type="password",
+        value=_openai_secret or "",
+    )
 
 today_key = datetime.date.today().isoformat()
 st.session_state.setdefault("refresh_count", {})
